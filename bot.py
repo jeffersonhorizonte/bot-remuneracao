@@ -48,7 +48,7 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total = dados_usuario["REMUNERAÇÃO VARIÁVEL"].sum()
 
         resposta = (
-            f"📅 Dia: {linha['DIA']}
+            f"📅 Dia: {linha['DIA']}"
 "
             f"🧍 Nome: {linha['NOME']}
 "
