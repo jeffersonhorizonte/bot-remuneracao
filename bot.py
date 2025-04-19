@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 
 TOKEN = os.getenv("BOT_TOKEN")
 EXCEL_FILE = "04. Farol.xlsx"
-COLUNAS = ["Login", "NOME", "Data", "TOTAL"]
+COLUNAS = ["Login", "Nome", "Data", "TOTAL"]
 
 # Carrega e valida o Excel
 if not os.path.exists(EXCEL_FILE):
@@ -32,7 +32,7 @@ async def responder(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     total = resultado["TOTAL"].sum()
-    nome = resultado["NOME"].iloc[0]
+    nome = resultado["Nome"].iloc[0]
 
     resposta = f"🧍 Nome: {nome}\n💰 Total: {formatar(total)}\n\n📅 Detalhamento:\n"
     for _, linha in resultado.iterrows():
