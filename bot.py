@@ -1,91 +1,79 @@
 
 import os
 import pandas as pd
-from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes
 
 TOKEN = os.getenv("BOT_TOKEN")
-bot = Bot(token=TOKEN)
-app = Flask(__name__)
-
-# Carregar a planilha
 df = pd.read_excel("04. Farol.xlsx")
 df["Login"] = df["Login"].astype(str)
 
-# Estados da conversa
-CPF, SENHA = range(2)
-
-# Senhas simuladas (substituir pelo seu controle real)
-senhas = {"12345678900": "senha123", "98765432100": "teste456"}
+LOGIN, SENHA = range(2)
+usuarios = {}
 
 def fmt(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Olá! Por favor, envie seu CPF para continuar:")
-    return CPF
+    await update.message.reply_text("Olá! Informe seu CPF (apenas números):")
+    return LOGIN
 
-async def receber_cpf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def receber_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cpf = update.message.text.replace(".", "").replace("-", "")
     context.user_data["cpf"] = cpf
-    await update.message.reply_text("Agora, envie sua senha:")
+    await update.message.reply_text("Agora, digite sua senha:")
     return SENHA
 
 async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     senha = update.message.text
     cpf = context.user_data["cpf"]
-    if cpf in senhas and senhas[cpf] == senha:
-        dados = df[df["Login"] == cpf]
-        if dados.empty:
-            await update.message.reply_text("Nenhum dado encontrado para este CPF.")
-        else:
-            linha = dados.iloc[-1]
-            total = dados["R$"].sum()
-            await update.message.reply_text(
-                f"🧍 Nome: {linha['NOME']}
+    
+    linha_usuario = df[df["Login"] == cpf]
+    if linha_usuario.empty:
+        await update.message.reply_text("CPF não encontrado. Tente novamente com /start")
+        return ConversationHandler.END
+
+    linha = linha_usuario.iloc[-1]
+    valor_total = df[df["Login"] == cpf]["TOTAL DIA"].sum()
+
+    mensagem = (
+        f"🧍 Nome: {linha['NOME']}
 "
-                f"📅 Dia: {linha['DIA']}
+        f"📅 Dia: {linha['DIA']}
 "
-                f"💰 Valor do dia: {fmt(linha['R$'])}
+        f"💰 Valor do Dia: {fmt(linha['TOTAL DIA'])}
 "
-                f"📊 Atividade Turno A: {linha['ATIV. TURNO A']}
+        f"📊 Valor Total: {fmt(valor_total)}
 "
-                f"📊 Atividade Turno B: {linha['ATIV. TURNO B']}
+        f"🔧 Ativ. Turno A: {fmt(linha['ATIV. TURNO A'])}
 "
-                f"💵 Total acumulado: {fmt(total)}"
-            )
-    else:
-        await update.message.reply_text("CPF ou senha inválidos. Tente novamente.")
+        f"🔩 Ativ. Turno B: {fmt(linha['ATIV. TURNO B'])}"
+    )
+    await update.message.reply_text(mensagem)
     return ConversationHandler.END
 
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Operação cancelada.")
+    await update.message.reply_text("Consulta cancelada.")
     return ConversationHandler.END
 
-application = Application.builder().token(TOKEN).build()
-
-conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("start", start)],
-    states={
-        CPF: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_cpf)],
-        SENHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_senha)],
-    },
-    fallbacks=[CommandHandler("cancelar", cancelar)],
-)
-
-application.add_handler(conv_handler)
-
-@app.route("/", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    application.update_queue.put_nowait(update)
-    return "ok"
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+    
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_login)],
+            SENHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_senha)],
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar)],
+    )
+    
+    app.add_handler(conv_handler)
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        webhook_url=os.environ.get("WEBHOOK_URL")
+    )
 
 if __name__ == "__main__":
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000)),
-        url_path=TOKEN,
-        webhook_url=f"https://bot-remuneracao.onrender.com/{TOKEN}"
-    )
+    main()
