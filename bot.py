@@ -1,94 +1,64 @@
-
 import os
 import pandas as pd
-from telegram import Update, ReplyKeyboardRemove
-from telegram.ext import Application, CommandHandler, MessageHandler, ConversationHandler, ContextTypes, filters
+from flask import Flask, request
+import telegram
+from telegram import Bot
 
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    print("Erro: Variável de ambiente BOT_TOKEN não encontrada.")
-    exit(1)
+TOKEN = os.getenv("BOT_TOKEN", "COLE_SEU_TOKEN_AQUI")
+bot = Bot(token=TOKEN)
 
-required_columns = ["Login", "NOME", "DIA", "VR DIÁRIO", "VR TOTAL", "BONIFICAÇÃO", "RESSUPRIMENTO"]
+app = Flask(__name__)
 
-try:
-    df = pd.read_excel("04. Farol.xlsx")
-    if not all(col in df.columns for col in required_columns):
-        raise ValueError("A planilha está com colunas inválidas.")
-    df["Login"] = df["Login"].astype(str).str.replace(r'\D', '', regex=True)
-except Exception as e:
-    print(f"Erro ao carregar a planilha: {e}")
-    exit(1)
+# Validação do arquivo
+ARQUIVO = "04. Farol.xlsx"
+COLUNAS_ESPERADAS = {"Login", "NOME", "DIA", "VALOR"}
 
-LOGIN, SENHA = range(2)
-usuarios = {}
+if not os.path.exists(ARQUIVO):
+    raise FileNotFoundError(f"Arquivo '{ARQUIVO}' não encontrado.")
 
-def fmt(valor):
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+df = pd.read_excel(ARQUIVO)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("👤 Por favor, envie seu CPF (somente números):")
-    return LOGIN
+colunas_planilha = set(df.columns.str.strip())
+if not COLUNAS_ESPERADAS.issubset(colunas_planilha):
+    raise ValueError(f"A planilha deve conter as colunas: {COLUNAS_ESPERADAS}. Encontrado: {colunas_planilha}")
 
-async def receber_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    cpf = update.message.text.strip().replace(".", "").replace("-", "")
-    usuarios[update.effective_user.id] = {"cpf": cpf}
-    await update.message.reply_text("🔒 Agora, envie sua senha:")
-    return SENHA
+df["Login"] = df["Login"].astype(str)
 
-async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    senha = update.message.text.strip()
-    user_data = usuarios.get(update.effective_user.id, {})
-    cpf = user_data.get("cpf")
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = telegram.Update.de_json(request.get_json(force=True), bot)
 
-    if not cpf or not senha:
-        await update.message.reply_text("❌ CPF ou senha inválidos.")
-        return ConversationHandler.END
+    if update.message and update.message.text:
+        cpf = update.message.text.replace(".", "").replace("-", "").strip()
+        chat_id = update.message.chat.id
 
-    linha = df[df["Login"] == cpf]
-    if linha.empty:
-        await update.message.reply_text("❌ CPF não encontrado na base.")
-    else:
-        linha = linha.iloc[0]
-        mensagem = (
-            f"🧍 Nome: {linha['NOME']}
+        if not cpf.isdigit():
+            bot.send_message(chat_id=chat_id, text="❌ CPF inválido. Digite apenas números.")
+            return "ok"
+
+        resultados = df[df["Login"] == cpf]
+
+        if resultados.empty:
+            bot.send_message(chat_id=chat_id, text="❌ Nenhuma remuneração encontrada para este CPF.")
+        else:
+            total = resultados["VALOR"].sum()
+            mensagem = f"💰 Total recebido: R$ {total:,.2f}
+
 "
-            f"📅 Dia: {linha['DIA']}
+            for _, linha in resultados.iterrows():
+                mensagem += (
+                    f"🧍 Nome: {linha['NOME']}
 "
-            f"💰 Valor do dia: {fmt(linha['VR DIÁRIO'])}
+                    f"📅 Dia: {linha['DIA']}
 "
-            f"💸 Valor total: {fmt(linha['VR TOTAL'])}
+                    f"💵 Valor: R$ {linha['VALOR']:,.2f}
+
 "
-            f"🏆 Bonificação: {fmt(linha['BONIFICAÇÃO'])}
-"
-            f"📦 Ressuprimento: {fmt(linha['RESSUPRIMENTO'])}"
-        )
-        await update.message.reply_text(mensagem)
+                )
+            bot.send_message(chat_id=chat_id, text=mensagem)
 
-    return ConversationHandler.END
+    return "ok"
 
-async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("❌ Operação cancelada.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
-def main():
-    app = Application.builder().token(TOKEN).build()
-
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_login)],
-            SENHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_senha)],
-        },
-        fallbacks=[CommandHandler("cancelar", cancelar)],
-    )
-
-    app.add_handler(conv_handler)
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
-        webhook_url=os.environ.get("WEBHOOK_URL")
-    )
-
-if __name__ == "__main__":
-    main()
+@app.route("/", methods=["GET"])
+def index():
+    return "Bot está rodando com webhook!", 200
