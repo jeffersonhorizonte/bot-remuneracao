@@ -1,60 +1,52 @@
 import os
 import pandas as pd
-import telebot
-from flask import Flask, request
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-API_TOKEN = os.getenv("BOT_TOKEN")
-bot = telebot.TeleBot(API_TOKEN)
-app = Flask(__name__)
-
+TOKEN = os.getenv("BOT_TOKEN")
 EXCEL_FILE = "04. Farol.xlsx"
-COLUNAS_OBRIGATORIAS = ['Login', 'NOME', 'DIA', 'VALOR']
+COLUNAS = ["Login", "NOME", "DIA", "VALOR"]
 
-def validar_planilha():
-    if not os.path.exists(EXCEL_FILE):
-        raise FileNotFoundError(f"Arquivo '{EXCEL_FILE}' não encontrado.")
-    df = pd.read_excel(EXCEL_FILE)
-    for coluna in COLUNAS_OBRIGATORIAS:
-        if coluna not in df.columns:
-            raise ValueError(f"Coluna obrigatória '{coluna}' não encontrada na planilha.")
-    return df
+# Carrega e valida o Excel
+if not os.path.exists(EXCEL_FILE):
+    raise FileNotFoundError(f"Arquivo {EXCEL_FILE} não encontrado.")
 
-df = validar_planilha()
-df["Login"] = df["Login"].astype(str)
+df = pd.read_excel(EXCEL_FILE)
+for col in COLUNAS:
+    if col not in df.columns:
+        raise ValueError(f"Coluna obrigatória ausente: {col}")
+df["Login"] = df["Login"].astype(str).str.replace(r"\D", "", regex=True)
 
-@bot.message_handler(commands=["start"])
-def enviar_boas_vindas(message):
-    bot.reply_to(message, "Olá! Envie seu CPF para consultar sua remuneração.")
+def formatar(valor):
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-@bot.message_handler(func=lambda msg: True)
-def responder_remuneracao(message):
-    cpf = message.text.replace(".", "").replace("-", "").strip()
-    resultados = df[df["Login"] == cpf]
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("👋 Envie seu CPF para consultar sua remuneração:")
 
-    if resultados.empty:
-        bot.reply_to(message, "❌ CPF não encontrado. Verifique e tente novamente.")
+async def responder(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cpf = update.message.text.replace(".", "").replace("-", "").strip()
+    resultado = df[df["Login"] == cpf]
+
+    if resultado.empty:
+        await update.message.reply_text("❌ CPF não encontrado.")
         return
 
-    total = resultados["VALOR"].sum()
-    nome = resultados["NOME"].iloc[0]
+    total = resultado["VALOR"].sum()
+    nome = resultado["NOME"].iloc[0]
 
-    mensagem = f"💰 Total recebido: R$ {total:,.2f}\n🧍 Nome: {nome}\n\n📊 Detalhamento:\n"
-    for _, linha in resultados.iterrows():
-        mensagem += (
-            f"📅 Dia: {linha['DIA']} - "
-            f"R$ {linha['VALOR']:,.2f}\n"
-        )
+    resposta = f"🧍 Nome: {nome}\n💰 Total: {formatar(total)}\n\n📅 Detalhamento:\n"
+    for _, linha in resultado.iterrows():
+        resposta += f"• Dia {linha['DIA']}: {formatar(linha['VALOR'])}\n"
 
-    bot.reply_to(message, mensagem)
+    await update.message.reply_text(resposta)
 
-@app.route("/", methods=["POST"])
-def webhook():
-    if request.headers.get("content-type") == "application/json":
-        json_string = request.get_data().decode("utf-8")
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ""
-    return "OK"
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder))
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        webhook_url=os.environ.get("WEBHOOK_URL")
+    )
