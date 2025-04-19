@@ -49,15 +49,10 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         resposta = (
             f"📅 Dia: {linha['DIA']}"
-"
             f"🧍 Nome: {linha['NOME']}
-"
             f"💰 Remuneração do dia: {fmt(linha['REMUNERAÇÃO VARIÁVEL'])}
-"
             f"📦 Atividade Turno A: {fmt(linha['ATIV. TURNO A'])}
-"
             f"📦 Atividade Turno B: {fmt(linha['ATIV. TURNO B'])}
-"
             f"💵 Total acumulado: {fmt(total)}"
         )
         await update.message.reply_text(resposta)
