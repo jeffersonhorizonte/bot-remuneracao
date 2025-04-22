@@ -22,12 +22,14 @@ def fmt(valor):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("👤 Por favor, envie seu CPF (somente números):")
+    context.user_data["conversation"] = LOGIN
     return LOGIN
 
 async def receber_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     cpf = update.message.text.strip().replace(".", "").replace("-", "")
     usuarios[update.effective_user.id] = {"cpf": cpf}
     await update.message.reply_text("🔒 Agora, envie sua senha:")
+    context.user_data["conversation"] = SENHA
     return SENHA
 
 async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -37,7 +39,8 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     if not cpf or not senha:
         await update.message.reply_text("❌ CPF ou senha inválidos.")
-        return ConversationHandler.END
+        context.user_data["conversation"] = None
+    return ConversationHandler.END
 
     resultados = df[(df["Login"] == cpf) & (df["Senha"] == senha)]
     if resultados.empty:
@@ -71,14 +74,26 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         )
         await update.message.reply_text(mensagem)
 
+    context.user_data["conversation"] = None
     return ConversationHandler.END
 
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("❌ Operação cancelada.", reply_markup=ReplyKeyboardRemove())
+    context.user_data["conversation"] = None
     return ConversationHandler.END
 
 
+
 async def entrada_padrao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Verifica se o usuário está em alguma etapa ativa
+    user_data = context.user_data
+    if user_data.get("conversation") in [0, 1]:
+        return  # está no meio do fluxo, não interrompe
+
+    keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", callback_data="start")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
+
     keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", callback_data="start")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
