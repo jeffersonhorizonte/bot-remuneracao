@@ -39,19 +39,29 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await update.message.reply_text("❌ CPF ou senha inválidos.")
         return ConversationHandler.END
 
-    linha = df[(df["Login"] == cpf) & (df["Senha"] == senha)]
-    if linha.empty:
-        await update.message.reply_text("❌ CPF ou senha incorretos. Tente novamente com /start")
+    resultados = df[(df["Login"] == cpf) & (df["Senha"] == senha)]
+    if resultados.empty:
+        await update.message.reply_text("⚠️ Opa, algo está incorreto. Verifique se o CPF está sem pontos ou traços, ou se a senha que você digitou é a correta.")
     else:
-        linha = linha.iloc[0]
-        indicadores = "\n".join([f"• {col}: {fmt(linha[col])}" for col in INDICADORES if col in linha])
-        desenvolvimento = "\n".join([f"• {col}: {fmt(linha[col])}" for col in DESENVOLVIMENTO if col in linha])
+        detalhes = ""
+        total_geral = resultados["TOTAL"].sum()
+        for _, dia in resultados.iterrows():
+            data_fmt = dia["Data"].strftime("%d/%m") if not pd.isna(dia["Data"]) else "-"
+            abs_valor = dia["ABS"]
+            valor_dia = fmt(dia["TOTAL"])
+            detalhes += f"• {data_fmt} - ABS: {abs_valor} - Total: {valor_dia}\n"
+
+        ult = resultados.iloc[-1]
+        indicadores = "\n".join([f"• {col}: {fmt(ult[col])}" for col in INDICADORES if col in ult])
+        desenvolvimento = "\n".join([
+            f"• {col}: {int(ult[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {ult[col]}"
+            for col in DESENVOLVIMENTO if col in ult])
+
         mensagem = (
-            f"🧍 Nome: {linha['Nome']}\n"
-            f"📅 Data: {linha['Data'].strftime('%d/%m')}\n" if not pd.isna(linha['Data']) else ''
-            f"🕒 Presença (ABS): {linha['ABS']}\n"
-            f"💰 Total do dia: {fmt(linha['TOTAL'])}\n\n"
-            f"📊 Indicadores de Desempenho:\n{indicadores}\n\n"
+            f"🧍 Nome: {ult['Nome']}\n"
+            f"💰 Total recebido no período: {fmt(total_geral)}\n\n"
+            f"📅 Detalhamento por dia:\n{detalhes}\n"
+            f"📊 Indicadores de Desempenho (último dia):\n{indicadores}\n\n"
             f"🌱 Desenvolvimento:\n{desenvolvimento}"
         )
         await update.message.reply_text(mensagem)
