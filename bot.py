@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from telegram import Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, ContextTypes, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, ContextTypes, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
 EXCEL_FILE = "04. Farol.xlsx"
@@ -62,6 +62,8 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             f"• {col}: {int(ult[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {ult[col]}"
             for col in DESENVOLVIMENTO if col in ult])
 
+            for col in DESENVOLVIMENTO if col in ult])
+
         mensagem = (
             f"🧍 Nome: {ult['Nome']}\n"
             f"💰 Total recebido no período: {fmt(total_geral)}\n\n"
@@ -82,15 +84,9 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def entrada_padrao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("conversation") in [LOGIN, SENHA]:
         return
-    keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", callback_data="start")]]
+    keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", url="https://t.me/HoriCaruaru_bot?start=start")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
-
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data == "start":
-        await start(query.message, context)
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -105,7 +101,6 @@ def main():
     )
 
     app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, entrada_padrao))
 
     app.run_webhook(
