@@ -40,7 +40,7 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     if not cpf or not senha:
         await update.message.reply_text("❌ CPF ou senha inválidos.")
         context.user_data["conversation"] = None
-    return ConversationHandler.END
+        return ConversationHandler.END
 
     resultados = df[(df["Login"] == cpf) & (df["Senha"] == senha)]
     if resultados.empty:
@@ -90,15 +90,7 @@ async def entrada_padrao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_data.get("conversation") in [0, 1]:
         return  # está no meio do fluxo, não interrompe
 
-    keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", callback_data="start")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
-
-    keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", callback_data="start")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
-
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "start":
