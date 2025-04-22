@@ -21,6 +21,10 @@ def fmt(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    keyboard = [[KeyboardButton("/start 🚀 Iniciar Consulta de RV")]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("👋 Bem-vindo! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
+
     await update.message.reply_text("👤 Por favor, envie seu CPF (somente números):")
     return LOGIN
 
