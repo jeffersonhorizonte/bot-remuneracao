@@ -58,11 +58,12 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         ult = resultados_filtrados.iloc[-1] if not resultados_filtrados.empty else resultados.iloc[-1]
 
         indicadores = "\n".join([f"• {col}: {fmt(ult[col])}" for col in INDICADORES if col in ult])
-        desenvolvimento = "\n".join([
-            f"• {col}: {int(ult[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {ult[col]}"
-            for col in DESENVOLVIMENTO if col in ult])
-
-            for col in DESENVOLVIMENTO if col in ult])
+        desenvolvimento = "\n".join(
+            [
+                f"• {col}: {int(ult[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {ult[col]}"
+                for col in DESENVOLVIMENTO if col in ult
+            ]
+        )
 
         mensagem = (
             f"🧍 Nome: {ult['Nome']}\n"
