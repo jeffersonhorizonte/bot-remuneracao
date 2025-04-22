@@ -21,6 +21,9 @@ def fmt(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", callback_data="start")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("👋 Bem-vindo! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
     await update.message.reply_text("👤 Por favor, envie seu CPF (somente números):")
     context.user_data["conversation"] = LOGIN
     return LOGIN
@@ -55,10 +58,7 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             detalhes += f"• {data_fmt} - ABS: {abs_valor} - Total: {valor_dia}\n"
 
         resultados_filtrados = resultados[resultados["Data"] < pd.Timestamp.now().normalize()]
-        if resultados_filtrados.empty:
-            ult = resultados.iloc[-1]
-        else:
-            ult = resultados_filtrados.iloc[-1]
+        ult = resultados_filtrados.iloc[-1] if not resultados_filtrados.empty else resultados.iloc[-1]
 
         indicadores = "\n".join([f"• {col}: {fmt(ult[col])}" for col in INDICADORES if col in ult])
         desenvolvimento = "\n".join([
@@ -82,23 +82,18 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["conversation"] = None
     return ConversationHandler.END
 
-
-
 async def entrada_padrao(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Verifica se o usuário está em alguma etapa ativa
-    user_data = context.user_data
-    if user_data.get("conversation") in [0, 1]:
-        return  # está no meio do fluxo, não interrompe
+    if context.user_data.get("conversation") in [LOGIN, SENHA]:
+        return
+    keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", callback_data="start")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
 
-        async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "start":
         await start(query, context)
-
-    keyboard = [[KeyboardButton("/start 🚀 Iniciar Consulta de RV")]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
