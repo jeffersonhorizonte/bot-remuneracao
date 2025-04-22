@@ -59,8 +59,9 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
         indicadores = "\n".join([f"• {col}: {fmt(ult[col])}" for col in INDICADORES if col in ult])
         desenvolvimento = "\n".join([
-            f"• {col}: {int(ult[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {ult[col]}"
-            for col in DESENVOLVIMENTO if col in ult])
+    f"• {col}: {int(ult[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {ult[col]}"
+    for col in DESENVOLVIMENTO if col in ult
+])
 
             for col in DESENVOLVIMENTO if col in ult])
 
