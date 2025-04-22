@@ -1,7 +1,7 @@
 import os
 import pandas as pd
-from telegram import Update, ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, ContextTypes, filters
+from telegram import Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, ContextTypes, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
 EXCEL_FILE = "04. Farol.xlsx"
@@ -21,10 +21,6 @@ def fmt(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    keyboard = [[KeyboardButton("/start 🚀 Iniciar Consulta de RV")]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("👋 Bem-vindo! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
-
     await update.message.reply_text("👤 Por favor, envie seu CPF (somente números):")
     return LOGIN
 
@@ -81,7 +77,18 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("❌ Operação cancelada.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
+
 async def entrada_padrao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", callback_data="start")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
+
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "start":
+        await start(query, context)
+
     keyboard = [[KeyboardButton("/start 🚀 Iniciar Consulta de RV")]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
@@ -99,6 +106,7 @@ def main():
     )
 
     app.add_handler(conv_handler)
+    app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, entrada_padrao))
 
     app.run_webhook(
