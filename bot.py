@@ -51,7 +51,11 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             valor_dia = fmt(dia["TOTAL"])
             detalhes += f"• {data_fmt} - ABS: {abs_valor} - Total: {valor_dia}\n"
 
-        ult = resultados.iloc[-1]
+        resultados_filtrados = resultados[resultados["Data"] < pd.Timestamp.now().normalize()]
+        if resultados_filtrados.empty:
+            ult = resultados.iloc[-1]
+        else:
+            ult = resultados_filtrados.iloc[-1]
         indicadores = "\n".join([f"• {col}: {fmt(ult[col])}" for col in INDICADORES if col in ult])
         desenvolvimento = "\n".join([
             f"• {col}: {int(ult[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {ult[col]}"
@@ -61,7 +65,7 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             f"🧍 Nome: {ult['Nome']}\n"
             f"💰 Total recebido no período: {fmt(total_geral)}\n\n"
             f"📅 Detalhamento por dia:\n{detalhes}\n"
-            f"📊 Indicadores de Desempenho (último dia):\n{indicadores}\n\n"
+            f"📊 Indicadores de Desempenho (referente a {ult['Data'].strftime('%d/%m')}):\n{indicadores}\n\n"
             f"🌱 Desenvolvimento:\n{desenvolvimento}"
         )
         await update.message.reply_text(mensagem)
