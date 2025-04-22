@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from telegram import Update, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, ContextTypes, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -56,6 +56,7 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             ult = resultados.iloc[-1]
         else:
             ult = resultados_filtrados.iloc[-1]
+
         indicadores = "\n".join([f"• {col}: {fmt(ult[col])}" for col in INDICADORES if col in ult])
         desenvolvimento = "\n".join([
             f"• {col}: {int(ult[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {ult[col]}"
@@ -76,6 +77,11 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("❌ Operação cancelada.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
+async def entrada_padrao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[KeyboardButton("/start 🚀 Iniciar Consulta de RV")]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
+
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -89,6 +95,8 @@ def main():
     )
 
     app.add_handler(conv_handler)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, entrada_padrao))
+
     app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
