@@ -21,9 +21,6 @@ def fmt(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", callback_data="start")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("👋 Bem-vindo! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
     await update.message.reply_text("👤 Por favor, envie seu CPF (somente números):")
     context.user_data["conversation"] = LOGIN
     return LOGIN
@@ -93,7 +90,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "start":
-        await start(query, context)
+        await start(query.message, context)
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
