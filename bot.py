@@ -91,17 +91,34 @@ async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         valor_dia = fmt(dia["TOTAL"])
         detalhes += f"• {data_fmt} - ABS: {abs_valor} - Total: {valor_dia}\n"
 
-    indicadores = "\n".join([f"• {col}: {fmt(ult[col])}" for col in INDICADORES if col in ult])
+    # 🎯 Lógica especial para definir qual dia usar nos indicadores:
+    hoje = pd.Timestamp.now().normalize()
+    ontem = hoje - pd.Timedelta(days=1)
+    if ontem.weekday() == 6:  # domingo
+        dia_referencia = hoje - pd.Timedelta(days=2)  # sábado
+    else:
+        dia_referencia = ontem
+
+    if ult.get("CARGO", "").strip().upper() == "AJUDANTE" and ult.get("TURNO", "").strip().upper() == "C":
+        dia_referencia = hoje
+
+    linha_indicador = resultados_filtrados[resultados_filtrados["Data"] == dia_referencia]
+    if not linha_indicador.empty:
+        base_indicador = linha_indicador.iloc[0]
+    else:
+        base_indicador = ult
+
+    indicadores = "\n".join([f"• {col}: {fmt(base_indicador[col])}" for col in INDICADORES if col in base_indicador])
     desenvolvimento = "\n".join([
-        f"• {col}: {int(ult[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {ult[col]}"
-        for col in DESENVOLVIMENTO if col in ult
+        f"• {col}: {int(base_indicador[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {base_indicador[col]}"
+        for col in DESENVOLVIMENTO if col in base_indicador
     ])
 
     mensagem = (
-        f"🧍 Nome: {ult['Nome']}\n"
+        f"🧍 Nome: {base_indicador['Nome']}\n"
         f"💰 Total recebido no período: {fmt(total_geral)}\n\n"
         f"📅 Detalhamento por dia:\n{detalhes}\n"
-        f"📊 Indicadores de Desempenho (referente a {ult['Data'].strftime('%d/%m')}):\n{indicadores}\n\n"
+        f"📊 Indicadores de Desempenho (referente a {dia_referencia.strftime('%d/%m')}):\n{indicadores}\n\n"
         f"🌱 Desenvolvimento:\n{desenvolvimento}"
     )
     await query.edit_message_text(mensagem)
