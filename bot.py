@@ -1,12 +1,15 @@
 import os
 import pandas as pd
+from datetime import datetime
 from telegram import Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram.constants import ChatAction
 
 TOKEN = os.getenv("BOT_TOKEN")
 EXCEL_FILE = "04. Farol.xlsx"
 INDICADORES = ["EFC", "RESSUPRIMENTO", "EFD", "ATIV. TURNO A", "ATIV. TURNO B", "MONTAGEM", "TMA", "CARREG. AG", "CARREG"]
 DESENVOLVIMENTO = ["CICLO DE GENTE", "SKAP - TECNICO", "SKAP - ESPECIFICO", "SAKP - EMPODERAMENTO"]
+IDS_AUTORIZADOS = [6275635034]  # 🔐 Substitua pelo seu ID
 
 df = pd.read_excel(EXCEL_FILE)
 df["Login"] = df["Login"].astype(str)
@@ -19,6 +22,24 @@ def fmt(valor):
     if pd.isna(valor):
         return "N/A"
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def registrar_acesso(user_id, nome_usuario, username, cpf, mes):
+    with open("acessos.csv", "a", encoding="utf-8") as f:
+        data = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        linha = f"{data},{user_id},{nome_usuario},{username},{cpf},{mes}\n"
+        f.write(linha)
+
+async def relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in IDS_AUTORIZADOS:
+        await update.message.reply_text("❌ Acesso negado.")
+        return
+
+    await update.message.chat.send_action(action=ChatAction.UPLOAD_DOCUMENT)
+    try:
+        await update.message.reply_document(document=open("acessos.csv", "rb"))
+    except FileNotFoundError:
+        await update.message.reply_text("⚠️ Nenhum acesso registrado ainda.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("👤 Por favor, envie seu CPF (somente números):")
@@ -65,6 +86,7 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     )
 
     usuarios[user_id]["resultados"] = resultados
+    usuarios[user_id]["cpf"] = cpf
     context.user_data["conversation"] = SELECIONAR_MES
     return SELECIONAR_MES
 
@@ -74,6 +96,15 @@ async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     mes_selecionado = query.data.replace("/", "-")
     user_id = query.from_user.id
     resultados = usuarios[user_id]["resultados"]
+
+    # 🔐 Registrar o acesso
+    registrar_acesso(
+        user_id=user_id,
+        nome_usuario=query.from_user.full_name,
+        username=query.from_user.username or "",
+        cpf=usuarios[user_id]["cpf"],
+        mes=mes_selecionado
+    )
 
     resultados["Periodo"] = resultados["Data"].dt.to_period("M").astype(str)
     resultados_filtrados = resultados[resultados["Periodo"] == mes_selecionado]
@@ -91,11 +122,11 @@ async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         valor_dia = fmt(dia["TOTAL"])
         detalhes += f"• {data_fmt} - ABS: {abs_valor} - Total: {valor_dia}\n"
 
-    # 🎯 Lógica especial para definir qual dia usar nos indicadores:
+    # 📊 Lógica para definir a linha de indicadores
     hoje = pd.Timestamp.now().normalize()
     ontem = hoje - pd.Timedelta(days=1)
     if ontem.weekday() == 6:  # domingo
-        dia_referencia = hoje - pd.Timedelta(days=2)  # sábado
+        dia_referencia = hoje - pd.Timedelta(days=2)
     else:
         dia_referencia = ontem
 
@@ -103,10 +134,7 @@ async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         dia_referencia = hoje
 
     linha_indicador = resultados_filtrados[resultados_filtrados["Data"] == dia_referencia]
-    if not linha_indicador.empty:
-        base_indicador = linha_indicador.iloc[0]
-    else:
-        base_indicador = ult
+    base_indicador = linha_indicador.iloc[0] if not linha_indicador.empty else ult
 
     indicadores = "\n".join([f"• {col}: {fmt(base_indicador[col])}" for col in INDICADORES if col in base_indicador])
     desenvolvimento = "\n".join([
@@ -151,6 +179,7 @@ def main():
     )
 
     app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("relatorio", relatorio))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, entrada_padrao))
 
     app.run_webhook(
