@@ -7,15 +7,16 @@ from telegram.constants import ChatAction
 
 TOKEN = os.getenv("BOT_TOKEN")
 EXCEL_FILE = "04. Farol.xlsx"
+
 INDICADORES = ["EFC", "RESSUPRIMENTO", "EFD", "ATIV. TURNO A", "ATIV. TURNO B", "MONTAGEM", "TMA", "CARREG. AG", "CARREG"]
 DESENVOLVIMENTO = ["CICLO DE GENTE", "SKAP - TECNICO", "SKAP - ESPECIFICO", "SAKP - EMPODERAMENTO"]
-IDS_AUTORIZADOS = [6275635034]  # 🔐 Substitua pelo seu ID
+
+IDS_AUTORIZADOS = [6275635034]  # Seu ID de admin
 
 df = pd.read_excel(EXCEL_FILE)
 df["Login"] = df["Login"].astype(str)
-df["Senha"] = df["Senha"].astype(str)
 
-LOGIN, SENHA, SELECIONAR_MES = range(3)
+LOGIN, SELECIONAR_MES = range(2)
 usuarios = {}
 
 def fmt(valor):
@@ -42,30 +43,18 @@ async def relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Nenhum acesso registrado ainda.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("👤 Por favor, envie seu CPF (somente números):")
+    await update.message.reply_text("👤 Digite seu CPF (somente números):")
     context.user_data["conversation"] = LOGIN
     return LOGIN
 
 async def receber_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     cpf = update.message.text.strip().replace(".", "").replace("-", "")
     usuarios[update.effective_user.id] = {"cpf": cpf}
-    await update.message.reply_text("🔒 Agora, envie sua senha:")
-    context.user_data["conversation"] = SENHA
-    return SENHA
 
-async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    senha = update.message.text.strip()
-    user_id = update.effective_user.id
-    cpf = usuarios.get(user_id, {}).get("cpf")
+    resultados = df[df["Login"] == cpf]
 
-    if not cpf or not senha:
-        await update.message.reply_text("❌ CPF ou senha inválidos.")
-        context.user_data["conversation"] = None
-        return ConversationHandler.END
-
-    resultados = df[(df["Login"] == cpf) & (df["Senha"] == senha)]
     if resultados.empty:
-        await update.message.reply_text("⚠️ Opa, algo está incorreto. Verifique se o CPF está sem pontos ou traços, ou se a senha que você digitou é a correta.")
+        await update.message.reply_text("⚠️ CPF não encontrado. Verifique se digitou corretamente, sem pontos ou traços.")
         return ConversationHandler.END
 
     meses_disponiveis = (
@@ -80,13 +69,13 @@ async def receber_senha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     keyboard = [[InlineKeyboardButton(mes, callback_data=mes)] for mes in meses_disponiveis]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     await update.message.reply_text(
-        "✅ Login realizado com sucesso!\nEscolha o mês que deseja visualizar:",
+        "✅ CPF validado!\nEscolha o mês que deseja visualizar:",
         reply_markup=reply_markup
     )
 
-    usuarios[user_id]["resultados"] = resultados
-    usuarios[user_id]["cpf"] = cpf
+    usuarios[update.effective_user.id]["resultados"] = resultados
     context.user_data["conversation"] = SELECIONAR_MES
     return SELECIONAR_MES
 
@@ -94,10 +83,10 @@ async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     query = update.callback_query
     await query.answer()
     mes_selecionado = query.data.replace("/", "-")
+
     user_id = query.from_user.id
     resultados = usuarios[user_id]["resultados"]
 
-    # 🔐 Registrar o acesso
     registrar_acesso(
         user_id=user_id,
         nome_usuario=query.from_user.full_name,
@@ -116,16 +105,16 @@ async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     ult = resultados_filtrados.iloc[-1]
     detalhes = ""
     total_geral = resultados_filtrados["TOTAL"].sum()
+
     for _, dia in resultados_filtrados.iterrows():
         data_fmt = dia["Data"].strftime("%d/%m") if not pd.isna(dia["Data"]) else "-"
         abs_valor = dia["ABS"]
         valor_dia = fmt(dia["TOTAL"])
         detalhes += f"• {data_fmt} - ABS: {abs_valor} - Total: {valor_dia}\n"
 
-    # 📊 Lógica para definir a linha de indicadores
     hoje = pd.Timestamp.now().normalize()
     ontem = hoje - pd.Timedelta(days=1)
-    if ontem.weekday() == 6:  # domingo
+    if ontem.weekday() == 6:
         dia_referencia = hoje - pd.Timedelta(days=2)
     else:
         dia_referencia = ontem
@@ -149,6 +138,7 @@ async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         f"📊 Indicadores de Desempenho (referente a {dia_referencia.strftime('%d/%m')}):\n{indicadores}\n\n"
         f"🌱 Desenvolvimento:\n{desenvolvimento}"
     )
+
     await query.edit_message_text(mensagem)
     context.user_data["conversation"] = None
     return ConversationHandler.END
@@ -159,10 +149,12 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def entrada_padrao(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("conversation") in [LOGIN, SENHA, SELECIONAR_MES]:
+    if context.user_data.get("conversation") in [LOGIN, SELECIONAR_MES]:
         return
+
     keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", url="https://t.me/HoriCaruaru_bot?start=start")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
 
 def main():
@@ -172,7 +164,6 @@ def main():
         entry_points=[CommandHandler("start", start)],
         states={
             LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_login)],
-            SENHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, receber_senha)],
             SELECIONAR_MES: [CallbackQueryHandler(selecionar_mes)],
         },
         fallbacks=[CommandHandler("cancelar", cancelar)],
