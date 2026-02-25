@@ -13,8 +13,26 @@ DESENVOLVIMENTO = ["CICLO DE GENTE", "SKAP - TECNICO", "SKAP - ESPECIFICO", "SAK
 
 IDS_AUTORIZADOS = [6275635034]  # Seu ID de admin
 
+# ===============================
+# LEITURA E PADRONIZAÇÃO DA BASE
+# ===============================
+
 df = pd.read_excel(EXCEL_FILE)
-df["Login"] = df["Login"].astype(str)
+
+# Padroniza CPF/Login
+df["Login"] = (
+    df["Login"]
+    .astype(str)
+    .str.replace(".0", "", regex=False)
+    .str.replace(".", "", regex=False)
+    .str.replace("-", "", regex=False)
+    .str.replace(" ", "", regex=False)
+    .str.strip()
+)
+
+# Garante que Data seja datetime
+if not pd.api.types.is_datetime64_any_dtype(df["Data"]):
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
 
 LOGIN, SELECIONAR_MES = range(2)
 usuarios = {}
@@ -44,18 +62,29 @@ async def relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("👤 Digite seu CPF (somente números):")
-    context.user_data["conversation"] = LOGIN
     return LOGIN
 
 async def receber_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    cpf = update.message.text.strip().replace(".", "").replace("-", "")
-    usuarios[update.effective_user.id] = {"cpf": cpf}
+    cpf = (
+        update.message.text
+        .strip()
+        .replace(".", "")
+        .replace("-", "")
+        .replace(" ", "")
+    )
 
     resultados = df[df["Login"] == cpf]
 
     if resultados.empty:
-        await update.message.reply_text("⚠️ CPF não encontrado. Verifique se digitou corretamente, sem pontos ou traços.")
+        await update.message.reply_text(
+            "⚠️ CPF não encontrado. Verifique se digitou corretamente, sem pontos ou traços."
+        )
         return ConversationHandler.END
+
+    usuarios[update.effective_user.id] = {
+        "cpf": cpf,
+        "resultados": resultados.copy()
+    }
 
     meses_disponiveis = (
         resultados["Data"]
@@ -75,8 +104,6 @@ async def receber_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         reply_markup=reply_markup
     )
 
-    usuarios[update.effective_user.id]["resultados"] = resultados
-    context.user_data["conversation"] = SELECIONAR_MES
     return SELECIONAR_MES
 
 async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -85,7 +112,7 @@ async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     mes_selecionado = query.data.replace("/", "-")
 
     user_id = query.from_user.id
-    resultados = usuarios[user_id]["resultados"]
+    resultados = usuarios[user_id]["resultados"].copy()
 
     registrar_acesso(
         user_id=user_id,
@@ -103,36 +130,39 @@ async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return ConversationHandler.END
 
     ult = resultados_filtrados.iloc[-1]
-    detalhes = ""
     total_geral = resultados_filtrados["TOTAL"].sum()
 
+    detalhes = ""
     for _, dia in resultados_filtrados.iterrows():
         data_fmt = dia["Data"].strftime("%d/%m") if not pd.isna(dia["Data"]) else "-"
-        abs_valor = dia["ABS"]
-        valor_dia = fmt(dia["TOTAL"])
+        abs_valor = dia.get("ABS", "-")
+        valor_dia = fmt(dia.get("TOTAL", 0))
         detalhes += f"• {data_fmt} - ABS: {abs_valor} - Total: {valor_dia}\n"
 
     hoje = pd.Timestamp.now().normalize()
     ontem = hoje - pd.Timedelta(days=1)
+
     if ontem.weekday() == 6:
         dia_referencia = hoje - pd.Timedelta(days=2)
     else:
         dia_referencia = ontem
 
-    if ult.get("CARGO", "").strip().upper() == "AJUDANTE" and ult.get("TURNO", "").strip().upper() == "C":
-        dia_referencia = hoje
-
     linha_indicador = resultados_filtrados[resultados_filtrados["Data"] == dia_referencia]
     base_indicador = linha_indicador.iloc[0] if not linha_indicador.empty else ult
 
-    indicadores = "\n".join([f"• {col}: {fmt(base_indicador[col])}" for col in INDICADORES if col in base_indicador])
+    indicadores = "\n".join([
+        f"• {col}: {fmt(base_indicador[col])}"
+        for col in INDICADORES if col in base_indicador
+    ])
+
     desenvolvimento = "\n".join([
-        f"• {col}: {int(base_indicador[col]*100)}%" if 'SKAP' in col or 'SAKP' in col else f"• {col}: {base_indicador[col]}"
+        f"• {col}: {int(base_indicador[col]*100)}%" if 'SKAP' in col or 'SAKP' in col
+        else f"• {col}: {base_indicador[col]}"
         for col in DESENVOLVIMENTO if col in base_indicador
     ])
 
     mensagem = (
-        f"🧍 Nome: {base_indicador['Nome']}\n"
+        f"🧍 Nome: {base_indicador.get('Nome','-')}\n"
         f"💰 Total recebido no período: {fmt(total_geral)}\n\n"
         f"📅 Detalhamento por dia:\n{detalhes}\n"
         f"📊 Indicadores de Desempenho (referente a {dia_referencia.strftime('%d/%m')}):\n{indicadores}\n\n"
@@ -140,22 +170,20 @@ async def selecionar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     await query.edit_message_text(mensagem)
-    context.user_data["conversation"] = None
     return ConversationHandler.END
 
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("❌ Operação cancelada.", reply_markup=ReplyKeyboardRemove())
-    context.user_data["conversation"] = None
     return ConversationHandler.END
 
 async def entrada_padrao(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("conversation") in [LOGIN, SELECIONAR_MES]:
-        return
-
     keyboard = [[InlineKeyboardButton("🚀 Iniciar Consulta de RV", url="https://t.me/HoriCaruaru_bot?start=start")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text("👋 Olá! Para começar, clique no botão abaixo:", reply_markup=reply_markup)
+    await update.message.reply_text(
+        "👋 Olá! Para começar, clique no botão abaixo:",
+        reply_markup=reply_markup
+    )
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
